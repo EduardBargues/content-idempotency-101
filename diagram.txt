@@ -1,0 +1,24 @@
+# paste content into https://www.websequencediagrams.com/
+client -> api: new request
+api -> idem-client: process request
+idem-client -> db: get-or-set request status
+db -> idem-client: request assigned
+idem-client -> implementation: process request
+implementation -> idem-client: response
+idem-client -> db: save request+response
+idem-client -> api: response
+api -> client: response
+
+client -> api: same request before deadline
+api -> idem-client: process request
+idem-client -> db: get-or-set request status
+db -> idem-client: request processed
+idem-client -> api: cached response
+api -> client: cached response
+
+client -> api: same request while in progress
+api -> idem-client: request
+idem-client -> db: get-or-set request status
+db -> idem-client: request in progress
+idem-client -> api: request in progress
+api -> client: bad request (request in progress)
