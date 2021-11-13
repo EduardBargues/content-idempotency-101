@@ -6,6 +6,11 @@ using Nito.AsyncEx;
 
 namespace Idempotency
 {
+    public interface IIdempotentStorage
+    {
+        Task<IdempotentResponse> LinkRequestAndKey(string key, string ownerId, TimeSpan timeToLive);
+        Task CacheResponse(string key, string ownerId, int statusCode, string body, TimeSpan timeToLive);
+    }
     public class InMemoryStorage : IIdempotentStorage
     {
         private readonly Dictionary<string, IdempotentResponse> _db;
@@ -19,7 +24,7 @@ namespace Idempotency
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
 
-        public async Task<IdempotentResponse> MasterExecution(string key, string ownerId, TimeSpan timeToLive)
+        public async Task<IdempotentResponse> LinkRequestAndKey(string key, string ownerId, TimeSpan timeToLive)
         {
             using (await _mutex.LockAsync())
             {
@@ -34,29 +39,26 @@ namespace Idempotency
                 return _db[key];
             }
         }
-        public async Task FinishExecution(string key, string ownerId, int statusCode, string body, TimeSpan timeToLive)
+        public async Task CacheResponse(string key, string ownerId, int statusCode, string body, TimeSpan timeToLive)
         {
             using (await _mutex.LockAsync())
             {
-                if (_db.ContainsKey(key))
+                var dbResponse = _db[key];
+                if (dbResponse.OwnerId == ownerId && !dbResponse.Finished)
                 {
-                    var dbResponse = _db[key];
-                    if (dbResponse.OwnerId == ownerId && !dbResponse.Finished)
-                    {
-                        _logger.LogInformation($"----> FINISHING IDEMPOTENT RESPONSE - key: {key} / ownerId: {ownerId}");
-                        dbResponse.Finished = true;
-                        dbResponse.StatusCode = statusCode;
-                        dbResponse.Body = body;
-                        dbResponse.TimeToLive = timeToLive;
-                        SetDeprecationTimeToLive(key, timeToLive);
-                    }
+                    _logger.LogInformation($"----> FINISHING IDEMPOTENT RESPONSE - key: {key} / ownerId: {ownerId}");
+                    dbResponse.Finished = true;
+                    dbResponse.StatusCode = statusCode;
+                    dbResponse.Body = body;
+                    dbResponse.TimeToLive = timeToLive;
+                    SetDeprecationTimeToLive(key, timeToLive);
                 }
             }
         }
 
         private void SetDeprecationTimeToLive(string key, TimeSpan ttl)
         {
-            var ttlTask = Task.Run(async () =>
+            Task.Run(async () =>
             {
                 await Task.Delay(ttl);
                 using (await _mutex.LockAsync())

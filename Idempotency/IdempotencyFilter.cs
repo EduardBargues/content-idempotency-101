@@ -32,36 +32,28 @@ namespace Idempotency
             var key = context.HttpContext.Request.Headers.TryGetValue(_headerName, out StringValues keys)
                 ? keys[0]
                 : null;
-
             if (key == null)
-            {
-                context.Result = new BadRequestObjectResult($"Missing idempotency key. method: {context.HttpContext.Request.Method} path: {context.HttpContext.Request.Path} header: {_headerName}");
-                return;
-            }
-
-            var ownerId = context.HttpContext.TraceIdentifier;
-            var response = await _db.MasterExecution(key, ownerId, _timeToLiveMaster);
-            if (response.Finished)
-            {
-                context.Result = new ObjectResult(response.Body)
-                {
-                    StatusCode = response.StatusCode,
-                };
-            }
+                SetBadRequestResult(context);
             else
             {
-                if (response.OwnerId != ownerId)
-                {
-                    context.Result = new ConflictObjectResult($"Request with idempotency-key: {key} is in progress.");
-                }
+                var ownerId = context.HttpContext.TraceIdentifier;
+                var response = await _db.LinkRequestAndKey(key, ownerId, _timeToLiveMaster);
+                if (response.Finished)
+                    AnswerWithCacheResponse(context, response);
                 else
                 {
-                    await ProcessContext(context, next, key, ownerId);
+                    if (response.OwnerId != ownerId)
+                        SetConflictResult(context, key);
+                    else
+                    {
+                        (var statusCode, var body) = await LetApiManageRequest(context, next);
+                        await _db.CacheResponse(key, ownerId, statusCode, body, _timeToLiveDeprecation);
+                    }
                 }
             }
         }
 
-        private async Task ProcessContext(ResourceExecutingContext context, ResourceExecutionDelegate next, string key, string ownerId)
+        private async Task<(int statusCode, string body)> LetApiManageRequest(ResourceExecutingContext context, ResourceExecutionDelegate next)
         {
             var originalBody = context.HttpContext.Response.Body;
             using (var memStream = new MemoryStream())
@@ -75,10 +67,27 @@ namespace Idempotency
 
                 memStream.Position = 0;
                 await memStream.CopyToAsync(originalBody);
-
                 var statusCode = executedContext.HttpContext.Response.StatusCode;
-                await _db.FinishExecution(key, ownerId, statusCode, responseBody, _timeToLiveDeprecation);
+                return (statusCode, responseBody);
             }
+        }
+
+        private static void SetConflictResult(ResourceExecutingContext context, string key)
+        {
+            context.Result = new ConflictObjectResult($"Request with idempotency-key: {key} is in progress.");
+        }
+        private void AnswerWithCacheResponse(ResourceExecutingContext context, IdempotentResponse response)
+        {
+            _logger.LogInformation($"----> REUSING IDEMPOTENT RESPONSE - key: {key} / ownerId: {ownerId}");
+            context.Result = new ObjectResult(response.Body)
+            {
+                StatusCode = response.StatusCode,
+            };
+        }
+        private void SetBadRequestResult(ResourceExecutingContext context)
+        {
+            var message = $"Missing idempotency key. method: {context.HttpContext.Request.Method} path: {context.HttpContext.Request.Path} header: {_headerName}";
+            context.Result = new BadRequestObjectResult(message);
         }
     }
 }

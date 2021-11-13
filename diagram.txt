@@ -1,3 +1,4 @@
+(main)
 # paste content into https://www.websequencediagrams.com/
 client -> api: new request
 api -> idem-client: process request
@@ -9,7 +10,7 @@ idem-client -> db: save request+response
 idem-client -> api: response
 api -> client: response
 
-client -> api: same request before deadline
+client ->  api: same request before deadline
 api -> idem-client: process request
 idem-client -> db: get-or-set request status
 db -> idem-client: request processed
@@ -22,3 +23,16 @@ idem-client -> db: get-or-set request status
 db -> idem-client: request in progress
 idem-client -> api: request in progress
 api -> client: bad request (request in progress)
+
+
+
+(1)
+# paste content into https://www.websequencediagrams.com/
+user -> website: buy item
+    note right of website: sends key(user,item)
+website -> idempotency: order
+    note right of idempotency: link order with key
+idempotency -> api: order
+api -> website: processed!
+    note right of idempotency: cache response
+website -> user: item on it's way! :)

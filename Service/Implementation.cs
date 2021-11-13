@@ -6,7 +6,7 @@ namespace Service
 {
     public interface IImplementation
     {
-        Task<string> DoAsync(string path);
+        Task<Guid> ProcessAsync(Transaction transaction);
     }
 
     public class Implementation : IImplementation
@@ -17,11 +17,18 @@ namespace Service
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
-        public async Task<string> DoAsync(string path)
+        public async Task<Guid> ProcessAsync(Transaction transaction)
         {
-            _logger.LogInformation("answering!");
+            _logger.LogInformation($"----> PROCESSING TRANSACTION. amount:{transaction.Amount} origin:{transaction.OriginId} destination:{transaction.DestinationId}");
             await Task.Delay(1000);
-            return $"Result at path: {path}";
+            return Guid.NewGuid();
         }
+    }
+
+    public class Transaction
+    {
+        public decimal Amount { get; set; }
+        public string OriginId { get; set; }
+        public string DestinationId { get; set; }
     }
 }

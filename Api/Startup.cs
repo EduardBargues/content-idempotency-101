@@ -20,7 +20,6 @@ namespace Api
 
         public IConfiguration Configuration { get; }
 
-        // This method gets called by the runtime. Use this method to add services to the container.
         public void ConfigureServices(IServiceCollection services)
         {
             services.AddControllers();
@@ -29,13 +28,15 @@ namespace Api
             services.AddSingleton<IIdempotentStorage, InMemoryStorage>();
             services.Configure<IdempotencyConfiguration>(config =>
             {
+                // Defines the header from where the idempotency-key is read.
                 config.HeaderName = "x-idem-key";
+                // Defines how much time a cache response is valid.
                 config.TimeToLiveDeprecation = TimeSpan.FromSeconds(10);
+                // We need to specify a time-to-live in case the api fails to process a request.
                 config.TimeToLiveMaster = TimeSpan.FromSeconds(15);
             });
         }
 
-        // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
         public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
         {
             if (env.IsDevelopment())
